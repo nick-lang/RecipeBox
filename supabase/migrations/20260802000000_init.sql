@@ -206,10 +206,12 @@ create policy "users update own profile"
   with check (id = auth.uid());
 
 -- Groups
+-- Creators must also see their group so INSERT ... RETURNING works before
+-- their owner membership row exists.
 create policy "members read their groups"
   on public.groups for select
   to authenticated
-  using (public.is_group_member(id));
+  using (public.is_group_member(id) or created_by = auth.uid());
 
 create policy "authenticated users create groups"
   on public.groups for insert
@@ -353,6 +355,23 @@ create policy "uploaders and admins delete recipe images"
              or public.group_role(public.recipe_group_id(r.id)) in ('owner', 'admin'))
     )
   );
+
+-- ---------------------------------------------------------------------------
+-- Grants: row access is governed by the RLS policies above; these grant the
+-- base table privileges Supabase roles need to reach them at all.
+-- ---------------------------------------------------------------------------
+grant usage on schema public to anon, authenticated, service_role;
+grant all on all tables in schema public to authenticated, service_role;
+grant select on all tables in schema public to anon;
+grant execute on all functions in schema public to authenticated, service_role;
+grant usage, select on all sequences in schema public to authenticated, service_role;
+
+alter default privileges in schema public
+  grant all on tables to authenticated, service_role;
+alter default privileges in schema public
+  grant execute on functions to authenticated, service_role;
+alter default privileges in schema public
+  grant usage, select on sequences to authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
 -- Storage: private bucket, paths are <group_id>/<recipe_id>/<file>
